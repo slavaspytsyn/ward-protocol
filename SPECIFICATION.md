@@ -205,6 +205,93 @@ WARD is fundamentally different from SEO cloaking:
 4. Policy is publicly declared in `ward.json`
 5. EU law explicitly permits this
 
+## 5. Payment Extension (WARD-Pay) — Draft
+
+> **Status: Draft.** This extension is under development and not yet part of the stable specification.
+
+WARD-Pay extends the ward.json policy with micropayment support, enabling website owners to charge AI bots for content access using privacy-preserving payments via [GNU Taler](https://taler.net/).
+
+### Concept
+
+Instead of binary "allow" or "block," WARD-Pay introduces a third option: **"paid access."** AI bots that present a valid payment proof receive full content. Bots without payment receive redacted content per standard WARD policy.
+
+### ward.json Payment Fields
+
+```json
+{
+  "version": "1.0",
+  "enforcement": "server",
+  "default": {
+    "training": "paid",
+    "summarization": true,
+    "indexing": true,
+    "payment": {
+      "method": "gnu-taler",
+      "merchant_url": "https://example.com/.well-known/taler-merchant",
+      "price": {
+        "amount": "0.02",
+        "currency": "EUR"
+      },
+      "bulk_access": {
+        "requests": 1000,
+        "price": { "amount": "15.00", "currency": "EUR" }
+      }
+    }
+  },
+  "rules": [
+    {
+      "path": "/blog/*",
+      "training": "paid",
+      "payment": {
+        "price": { "amount": "0.01", "currency": "EUR" }
+      }
+    },
+    {
+      "path": "/impressum",
+      "training": false
+    }
+  ]
+}
+```
+
+### Payment Values for `training` Field
+
+| Value | Meaning |
+|-------|---------|
+| `true` | Free access for AI training |
+| `false` | No access — content redacted |
+| `"paid"` | Access granted upon verified payment |
+
+### Payment Flow
+
+1. AI bot requests a page
+2. WARD middleware detects bot, reads ward.json
+3. If `training: "paid"` → check for `X-Taler-Payment-Proof` header
+4. If valid proof → serve full content
+5. If no proof → return `402 Payment Required` with payment details OR serve redacted content with payment instructions in `X-WARD-Payment-Required` header
+6. Bot initiates GNU Taler payment via `merchant_url`
+7. Bot retries request with payment proof
+
+### New Response Headers
+
+| Header | Example | Description |
+|--------|---------|-------------|
+| `X-WARD-Payment-Required` | `gnu-taler` | Payment method required |
+| `X-WARD-Payment-Price` | `EUR:0.02` | Price for this request |
+| `X-WARD-Payment-Merchant` | `https://...` | Merchant endpoint URL |
+
+### Why GNU Taler
+
+- **Privacy:** Payer (AI bot operator) stays anonymous. Merchant (website owner) receives verified payment.
+- **Micropayments:** Designed for sub-cent transactions with low overhead.
+- **No cryptocurrency:** Uses existing currencies (EUR, USD). No speculation, no volatility.
+- **Open source:** GNU GPLv3. No vendor lock-in.
+- **EU-aligned:** Developed with EU funding (NGI), designed for EU regulatory landscape.
+
+### Bulk Access
+
+For high-volume crawlers, WARD-Pay supports bulk access tokens — prepay for N requests at a discounted rate. This reduces per-request overhead while maintaining per-content accounting.
+
 ## License
 
 This specification is released under the MIT License.
